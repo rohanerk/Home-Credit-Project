@@ -19,82 +19,11 @@ st.set_page_config(
 # ── Load Data ─────────────────────────────────────────────────────────────
 @st.cache_data
 def load_data():
-    from huggingface_hub import hf_hub_download
-
     BASE_DIR = Path(__file__).parent
     DB_PATH  = BASE_DIR / "outputs" / "home_credit.duckdb"
-
-    # If DuckDB exists locally, use it
-    if DB_PATH.exists():
-        con = duckdb.connect(str(DB_PATH), read_only=True)
-        df  = con.execute("SELECT * FROM feature_mart").df()
-        con.close()
-        return df
-
-    # Otherwise download from Hugging Face and build feature mart
-    st.info("Loading data from Hugging Face — this takes 2-3 minutes on first load...")
-
-    REPO_ID = "Rohanerk/home-credit-default-risk"
-
-    files = {
-        "application_train":    "application_train.csv",
-        "bureau":               "bureau.csv",
-        "previous_application": "previous_application.csv",
-        "installments_payments":"installments_payments.csv",
-    }
-
-    dfs = {}
-    for name, filename in files.items():
-        path = hf_hub_download(
-            repo_id=REPO_ID,
-            filename=filename,
-            repo_type="dataset"
-        )
-        dfs[name] = pd.read_csv(path)
-
-    app = dfs["application_train"]
-
-    # Bureau aggregation
-    bureau_agg = dfs["bureau"].groupby("SK_ID_CURR").agg(
-        bureau_loan_count        = ("SK_ID_BUREAU", "count"),
-        bureau_avg_credit_amount = ("AMT_CREDIT_SUM", "mean"),
-        bureau_total_debt        = ("AMT_CREDIT_SUM_DEBT", "sum"),
-        bureau_avg_days_credit   = ("DAYS_CREDIT", "mean"),
-        bureau_active_loans      = ("CREDIT_ACTIVE", lambda x: (x == "Active").sum()),
-        bureau_overdue_count     = ("AMT_CREDIT_SUM_OVERDUE", lambda x: (x > 0).sum())
-    ).reset_index()
-
-    # Previous application aggregation
-    prev_agg = dfs["previous_application"].groupby("SK_ID_CURR").agg(
-        prev_app_count          = ("SK_ID_PREV", "count"),
-        prev_avg_loan_requested = ("AMT_APPLICATION", "mean"),
-        prev_avg_loan_approved  = ("AMT_CREDIT", "mean"),
-        prev_approved_count     = ("NAME_CONTRACT_STATUS", lambda x: (x == "Approved").sum()),
-        prev_refused_count      = ("NAME_CONTRACT_STATUS", lambda x: (x == "Refused").sum())
-    ).reset_index()
-
-    # Installments aggregation
-    inst = dfs["installments_payments"]
-    inst_agg = inst.groupby("SK_ID_CURR").apply(
-        lambda g: pd.Series({
-            "install_total_payments": len(g),
-            "install_payment_ratio":  (g["AMT_PAYMENT"] / g["AMT_INSTALMENT"].replace(0, np.nan)).mean(),
-            "install_late_payments":  (g["DAYS_ENTRY_PAYMENT"] > g["DAYS_INSTALMENT"]).sum(),
-            "install_avg_days_late":  (g["DAYS_ENTRY_PAYMENT"] - g["DAYS_INSTALMENT"]).mean()
-        })
-    ).reset_index()
-
-    # Derived features
-    app['credit_income_ratio']  = app['AMT_CREDIT'] / app['AMT_INCOME_TOTAL'].replace(0, np.nan)
-    app['annuity_income_ratio'] = app['AMT_ANNUITY'] / app['AMT_INCOME_TOTAL'].replace(0, np.nan)
-    app['age_years']            = app['DAYS_BIRTH'] / -365.0
-    app['employment_years']     = app['DAYS_EMPLOYED'].replace(365243, np.nan) / -365.0
-
-    # Merge
-    df = app.merge(bureau_agg, on='SK_ID_CURR', how='left')
-    df = df.merge(prev_agg,    on='SK_ID_CURR', how='left')
-    df = df.merge(inst_agg,    on='SK_ID_CURR', how='left')
-
+    con      = duckdb.connect(str(DB_PATH), read_only=True)
+    df       = con.execute("SELECT * FROM feature_mart").df()
+    con.close()
     return df
 
 # ── Train Model ───────────────────────────────────────────────────────────
