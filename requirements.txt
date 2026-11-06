@@ -7,4 +7,3 @@ scikit-learn
 shap
 streamlit
 optbinning
-huggingface_hub
