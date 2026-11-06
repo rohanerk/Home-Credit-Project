@@ -1,4 +1,4 @@
-# Home Credit Default Risk — Credit Intelligence Project
+# Home Credit Default Risk - Credit Intelligence Project
 
 ## Business Problem
 A consumer lender wants to grow its loan book without raising its default rate.
